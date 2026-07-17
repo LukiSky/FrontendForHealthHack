@@ -22,7 +22,6 @@ function usePageSubnav(): SubNavItem[] {
   const careLock =
     isStaffView && viewingStaff ? getCareLock(viewingStaff, state.patients) : null
 
-  // Locked: detail / update care / call staff / agent
   if (careLock) {
     const room = state.rooms.find((r) => r.id === careLock.roomId)
     const items: SubNavItem[] = [
@@ -56,7 +55,7 @@ function usePageSubnav(): SubNavItem[] {
   if (staffId) {
     const person = state.staff.find((s) => s.id === staffId)
     return [
-      { to: '/staff', label: 'Directory', end: true },
+      { to: '/#staff', label: 'Staff table' },
       ...(person ? [{ to: `/staff/${person.id}`, label: person.name, end: true }] : []),
     ]
   }
@@ -72,22 +71,24 @@ function usePageSubnav(): SubNavItem[] {
     return [{ to: '/rooms', label: 'Overview', end: true }]
   }
 
-  if (isAdminView && (path === '/admin' || path.startsWith('/admin/'))) {
-    return [
-      { to: '/admin', label: 'Overview', end: true },
-      { to: '/admin/intake', label: 'Intake', end: true },
+  // Admin / general ops surface
+  if (
+    (isAdminView || isGeneralView) &&
+    (path === '/' || path.startsWith('/admin'))
+  ) {
+    const items: SubNavItem[] = [
+      { to: '/', label: 'Ops', end: true },
+      { to: '/#patients', label: 'Patients' },
+      { to: '/#staff', label: 'Staff' },
     ]
+    if (isAdminView) {
+      items.push({ to: '/admin/intake', label: 'Intake', end: true })
+    }
+    return items
   }
 
-  if ((isAdminView || isAiView) && path === '/staff') {
-    return [{ to: '/staff', label: 'Directory', end: true }]
-  }
-
-  if (isGeneralView && (path === '/' || path === '/rooms')) {
-    return [
-      { to: '/', label: 'Dashboard', end: true },
-      { to: '/rooms', label: 'Rooms', end: true },
-    ]
+  if (isAiView && path === '/staff') {
+    return [{ to: '/', label: 'Ops staff table' }]
   }
 
   return []

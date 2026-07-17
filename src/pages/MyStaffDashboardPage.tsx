@@ -92,11 +92,11 @@ export function MyStaffDashboardPage() {
           })}
         </div>
         <Link
-          to="/staff"
+          to="/#staff"
           className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline"
         >
           <Users className="h-4 w-4" />
-          Staff directory
+          Staff table
         </Link>
       </div>
     )

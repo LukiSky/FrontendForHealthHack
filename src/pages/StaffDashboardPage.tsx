@@ -13,8 +13,8 @@ export function StaffDashboardPage() {
     return (
       <div className="space-y-3">
         <p className="text-slate-600">Staff member not found.</p>
-        <Link to="/staff" className="text-sm text-emerald-700 hover:underline">
-          Back to directory
+        <Link to="/#staff" className="text-sm text-emerald-700 hover:underline">
+          Back to staff table
         </Link>
       </div>
     )
@@ -38,10 +38,10 @@ export function StaffDashboardPage() {
     <div className="space-y-4">
       <div>
         <Link
-          to="/staff"
+          to="/#staff"
           className="mb-1 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
         >
-          <ArrowLeft className="h-3 w-3" /> Directory
+          <ArrowLeft className="h-3 w-3" /> Staff table
         </Link>
         <h1 className="text-xl font-semibold text-slate-900">{staff.name}</h1>
         <p className="text-sm capitalize text-slate-500">

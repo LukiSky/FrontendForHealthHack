@@ -100,7 +100,7 @@ export function isStaffViewingAs(viewingAs: ViewingAs): boolean {
 
 export function homePathForView(viewingAs: ViewingAs): string {
   if (viewingAs === 'general') return '/'
-  if (viewingAs === 'admin') return '/admin'
+  if (viewingAs === 'admin') return '/'
   if (viewingAs === 'ai') return '/rooms'
   return '/my-dashboard'
 }

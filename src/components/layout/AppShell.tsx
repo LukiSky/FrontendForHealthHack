@@ -9,7 +9,6 @@ import {
   Menu,
   Navigation,
   PhoneCall,
-  UserCog,
   UserPlus,
   Users,
   X,
@@ -33,23 +32,22 @@ function useRoleMenu(): NavItem[] {
   if (isAiView) {
     return [
       { to: '/rooms', label: 'Demo Overview', icon: Bot, end: true },
-      { to: '/staff', label: 'Staff & tasks', icon: Users },
+      { to: '/#staff', label: 'Staff table', icon: Users },
     ]
   }
 
   if (isGeneralView) {
     return [
-      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/', label: 'Ops', icon: LayoutDashboard, end: true },
       { to: '/rooms', label: 'Rooms', icon: BedDouble },
     ]
   }
 
   if (isAdminView) {
     return [
-      { to: '/admin', label: 'Dashboard', icon: UserCog, end: true },
+      { to: '/', label: 'Ops', icon: LayoutDashboard, end: true },
       { to: '/admin/intake', label: 'Intake', icon: UserPlus },
       { to: '/rooms', label: 'Rooms', icon: BedDouble },
-      { to: '/staff', label: 'Staff', icon: Users },
     ]
   }
 
