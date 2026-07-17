@@ -10,6 +10,7 @@ import {
   User,
   Users,
 } from 'lucide-react'
+import { AcuityBadge } from '../components/AcuityBadge'
 import { useClinic } from '../store/clinicStore'
 import type { Acuity, Patient, Room } from '../state/types'
 import { buildPatientBriefing } from '../utils/patientBriefing'
@@ -92,11 +93,11 @@ export function MyStaffDashboardPage() {
           })}
         </div>
         <Link
-          to="/#staff"
+          to="/move"
           className="inline-flex items-center gap-1.5 text-sm text-emerald-700 hover:underline"
         >
           <Users className="h-4 w-4" />
-          Staff table
+          Staff movement
         </Link>
       </div>
     )
@@ -249,6 +250,9 @@ export function MyStaffDashboardPage() {
                 </div>
 
                 <h2 className="text-lg font-semibold text-slate-900">{patient.name}</h2>
+                <div className="mt-2">
+                  <AcuityBadge acuity={patient.acuity} />
+                </div>
                 <p className="mt-2 text-sm font-medium text-slate-800">{briefing.whatsGoingOn}</p>
                 <ul className="mt-3 flex flex-wrap gap-1.5">
                   {briefing.highlights.slice(0, 3).map((h) => (
@@ -359,6 +363,9 @@ export function MyStaffDashboardPage() {
                 )}
               </div>
               <h2 className="text-lg font-semibold text-slate-900">{patient.name}</h2>
+              <div className="mt-2">
+                <AcuityBadge acuity={patient.acuity} />
+              </div>
               <p className="mt-2 text-sm font-medium text-slate-800">{briefing.whatsGoingOn}</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button

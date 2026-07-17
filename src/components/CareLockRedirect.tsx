@@ -11,12 +11,20 @@ export function CareLockRedirect() {
 
   const lock =
     isStaffView && viewingStaff ? getCareLock(viewingStaff, state.patients) : null
+  const hasPendingMustMove = Boolean(
+    viewingStaff &&
+      state.directives.some(
+        (d) => d.staffId === viewingStaff.id && d.must && d.status === 'pending',
+      ),
+  )
 
   useEffect(() => {
     if (!lock) return
     if (isPathAllowedUnderCareLock(location.pathname, lock.roomId)) return
+    // Critical must-moves override the normal care-lock navigation restriction.
+    if (hasPendingMustMove && location.pathname === '/move') return
     navigate(`/room/${lock.roomId}`, { replace: true })
-  }, [lock, location.pathname, navigate])
+  }, [hasPendingMustMove, lock, location.pathname, navigate])
 
   return null
 }

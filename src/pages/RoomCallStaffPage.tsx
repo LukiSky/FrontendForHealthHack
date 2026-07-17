@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Check, PhoneCall, Siren, UserRound } from 'lucide-react'
 import { useClinic } from '../store/clinicStore'
 import { getCareLock } from '../utils/careLock'
@@ -19,7 +19,8 @@ import { formatDistance, distanceFromStaffToRoom } from '../utils/distance'
  */
 export function RoomCallStaffPage() {
   const { id } = useParams<{ id: string }>()
-  const { state, dispatch, viewingStaff, isStaffView } = useClinic()
+  const { state, dispatch, viewingStaff, isStaffView, setViewingAs } = useClinic()
+  const navigate = useNavigate()
   const room = state.rooms.find((r) => r.id === id)
   const patient = state.patients.find((p) => p.roomId === id && !p.visitComplete)
   const careLock =
@@ -32,7 +33,10 @@ export function RoomCallStaffPage() {
 
   const [needId, setNeedId] = useState('nurse')
   const [why, setWhy] = useState<CallWhy | null>(null)
-  const [lastAssigned, setLastAssigned] = useState<string | null>(null)
+  const [lastAssigned, setLastAssigned] = useState<{
+    staffId: string
+    summary: string
+  } | null>(null)
 
   if (!room) {
     return (
@@ -122,9 +126,10 @@ export function RoomCallStaffPage() {
       },
     })
 
-    setLastAssigned(
-      `${assignee.name} (${assignee.role}) — coming to ${roomName} now (hands immediately)`,
-    )
+    setLastAssigned({
+      staffId: assignee.id,
+      summary: `${assignee.name} (${assignee.role}) → ${roomName} · Need hands immediately`,
+    })
   }
 
   function callWithOptions() {
@@ -150,9 +155,10 @@ export function RoomCallStaffPage() {
       },
     })
 
-    setLastAssigned(
-      `${assignee.name} (${selectedNeed.label}) — ${why}`,
-    )
+    setLastAssigned({
+      staffId: assignee.id,
+      summary: `${assignee.name} (${selectedNeed.label}) → ${roomName} · ${why}`,
+    })
     setWhy(null)
   }
 
@@ -181,7 +187,17 @@ export function RoomCallStaffPage() {
           <Check className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-semibold">Call sent</p>
-            <p className="mt-0.5">{lastAssigned}</p>
+            <p className="mt-0.5">{lastAssigned.summary}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setViewingAs(lastAssigned.staffId)
+                navigate('/move')
+              }}
+              className="mt-2 rounded-md bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white"
+            >
+              Switch to responder → Accept & Move
+            </button>
           </div>
         </div>
       )}

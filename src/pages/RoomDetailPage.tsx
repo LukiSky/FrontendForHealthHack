@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowRight,
   BedDouble,
   ClipboardEdit,
+  Clock,
   HandHelping,
   Lock,
   MapPin,
@@ -11,11 +12,14 @@ import {
   Radio,
   Users,
 } from 'lucide-react'
+import { AcuityBadge } from '../components/AcuityBadge'
+import { DoctorCriticalPanel } from '../components/ai/DoctorCriticalPanel'
 import { useClinic } from '../store/clinicStore'
 import type { StaffMember } from '../state/types'
 import { getCareLock } from '../utils/careLock'
 import { buildPatientBriefing } from '../utils/patientBriefing'
 import { distanceFromStaffToRoom, formatDistance } from '../utils/distance'
+import { formatTime } from '../utils/ids'
 
 /**
  * Patient detail:
@@ -25,7 +29,8 @@ import { distanceFromStaffToRoom, formatDistance } from '../utils/distance'
 export function RoomDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { state, dispatch, viewingStaff, isStaffView } = useClinic()
+  const location = useLocation()
+  const { state, dispatch, viewingStaff, isStaffView, isAdminView } = useClinic()
   const room = state.rooms.find((r) => r.id === id)
   const patient = state.patients.find((p) => p.roomId === id && !p.visitComplete)
   const present = state.staff.filter((s) => s.currentRoomId === id && s.role !== 'admin')
@@ -46,6 +51,14 @@ export function RoomDetailPage() {
   }, [patient, present, doctors, nurses])
 
   const briefing = patient ? buildPatientBriefing(patient) : null
+  const pendingDirective = patient
+    ? state.directives.find(
+        (d) =>
+          d.patientId === patient.id &&
+          d.must &&
+          (d.status === 'pending' || d.status === 'accepted'),
+      )
+    : undefined
 
   const iAmCaring = Boolean(
     isStaffView && viewingStaff && viewingStaff.currentRoomId === id && patient,
@@ -134,6 +147,33 @@ export function RoomDetailPage() {
         </div>
       )}
 
+      {patient?.chartIncomplete && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">
+            {location.state?.quickUrgentPlaced
+              ? 'Patient placed in room — chart can be completed later'
+              : 'Intake chart incomplete'}
+          </p>
+          <p className="mt-0.5 text-amber-800">
+            This patient was admitted via Quick urgent. Fill remaining details when you can.
+          </p>
+          {(isAdminView || !isStaffView) && (
+            <Link
+              to={`/admin/intake/${patient.id}`}
+              className="mt-2 inline-block rounded-md bg-amber-800 px-3 py-1.5 text-xs font-medium text-white"
+            >
+              Complete chart
+            </Link>
+          )}
+          <Link
+            to="/"
+            className="ml-2 mt-2 inline-block rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium text-amber-900"
+          >
+            Watch simulation
+          </Link>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -154,6 +194,7 @@ export function RoomDetailPage() {
             >
               {statusLabel}
             </span>
+            {patient && <AcuityBadge acuity={patient.acuity} />}
             {iAmCaring && (
               <span className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-semibold text-white">
                 <Radio className="h-3 w-3" /> You are caring
@@ -169,8 +210,91 @@ export function RoomDetailPage() {
         </div>
       </div>
 
+      {(location.state?.arrivedFromMustMove || pendingDirective || patient) && (
+        <section className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950">
+          {location.state?.arrivedFromMustMove && (
+            <p className="font-semibold">Must-move accepted — you are now in the assigned room.</p>
+          )}
+          {patient && (
+            <p className={location.state?.arrivedFromMustMove ? 'mt-1' : ''}>
+              Triage: <AcuityBadge acuity={patient.acuity} /> · Care status:{' '}
+              <strong>{patient.carePhase.replace(/_/g, ' ')}</strong>
+              {operating ? ` · responsible: ${operating.name}` : ''}
+              {pendingDirective
+                ? ` · ${pendingDirective.status === 'pending' ? 'staff response pending' : 'staff arriving'}`
+                : ' · next: review, take care, or update care'}
+            </p>
+          )}
+        </section>
+      )}
+
       {patient && briefing ? (
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <>
+          <section className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-800">
+                  <Radio className="h-3.5 w-3.5" />
+                  Live room status
+                </p>
+                <p className="mt-1 text-sm font-semibold text-violet-950">
+                  {patient.statusNote ?? 'Patient is being monitored by the care team.'}
+                </p>
+              </div>
+              {patient.statusUpdatedAt && (
+                <span className="inline-flex items-center gap-1 rounded bg-white px-2 py-1 font-mono text-[10px] text-violet-700 shadow-sm">
+                  <Clock className="h-3 w-3" />
+                  {formatTime(patient.statusUpdatedAt)}
+                </span>
+              )}
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              {[
+                {
+                  label: 'Room arrival',
+                  done: true,
+                  detail: patient.roomId ? room.name : 'Waiting',
+                },
+                {
+                  label: 'Vitals',
+                  done: patient.carePhase !== 'awaiting_vitals',
+                  detail:
+                    patient.carePhase === 'awaiting_vitals'
+                      ? 'Waiting for nurse'
+                      : patient.vitals.bloodPressure || 'Recorded',
+                },
+                {
+                  label: 'Clinician review',
+                  done:
+                    patient.simulationStage === 'ready_for_discharge' ||
+                    patient.carePhase === 'in_consult' ||
+                    patient.carePhase === 'complete',
+                  detail:
+                    patient.simulationStage === 'ready_for_discharge'
+                      ? 'Ready for disposition'
+                      : patient.carePhase === 'awaiting_exam'
+                      ? 'Ready for assessment'
+                      : patient.carePhase === 'in_consult'
+                        ? 'In progress'
+                        : 'Next step',
+                },
+              ].map((step) => (
+                <div
+                  key={step.label}
+                  className={`rounded-lg border px-3 py-2 text-xs ${
+                    step.done
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950'
+                      : 'border-violet-100 bg-white/80 text-slate-600'
+                  }`}
+                >
+                  <p className="font-semibold">{step.done ? '✓ ' : ''}{step.label}</p>
+                  <p className="mt-0.5 text-[11px] opacity-80">{step.detail}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             What is going on
           </p>
@@ -201,12 +325,68 @@ export function RoomDetailPage() {
                 BP {patient.vitals.bloodPressure || '—'} · HR {patient.vitals.heartRate || '—'}
               </p>
               <p className="text-slate-800">
+                RR {patient.vitals.respiratoryRate || '—'} · SpO₂ {patient.vitals.spo2 || '—'}
+              </p>
+              <p className="text-slate-800">
                 Temp {patient.vitals.temperature || '—'} · Wt {patient.vitals.weight || '—'}
               </p>
             </div>
             <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm">
               <p className="text-[11px] uppercase text-slate-400">Chart notes</p>
               <p className="mt-1 text-slate-800">{patient.notes?.trim() || 'No notes yet.'}</p>
+            </div>
+            <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm sm:col-span-2">
+              <p className="text-[11px] uppercase text-slate-400">Intake profile</p>
+              <dl className="mt-1 grid gap-1 text-slate-800 sm:grid-cols-2">
+                <div>
+                  <dt className="text-[11px] text-slate-400">Contact</dt>
+                  <dd>
+                    {patient.phone || '—'}
+                    {patient.preferredLanguage ? ` · ${patient.preferredLanguage}` : ''}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-slate-400">Emergency</dt>
+                  <dd>
+                    {patient.emergencyName
+                      ? `${patient.emergencyName}${patient.emergencyRelation ? ` (${patient.emergencyRelation})` : ''}${patient.emergencyPhone ? ` · ${patient.emergencyPhone}` : ''}`
+                      : '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-slate-400">Allergies</dt>
+                  <dd>{patient.allergies?.trim() || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-slate-400">Medications</dt>
+                  <dd>{patient.medications?.trim() || '—'}</dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-slate-400">Onset / pain</dt>
+                  <dd>
+                    {[
+                      patient.symptomOnset,
+                      patient.symptomDuration,
+                      patient.painScore ? `pain ${patient.painScore}/10` : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] text-slate-400">Arrival</dt>
+                  <dd>
+                    {[patient.arrivalMode, patient.referringSource].filter(Boolean).join(' · ') ||
+                      '—'}
+                  </dd>
+                </div>
+                {patient.pastMedicalHistory?.trim() && (
+                  <div className="sm:col-span-2">
+                    <dt className="text-[11px] text-slate-400">Past history</dt>
+                    <dd>{patient.pastMedicalHistory}</dd>
+                  </div>
+                )}
+              </dl>
             </div>
           </div>
 
@@ -286,7 +466,8 @@ export function RoomDetailPage() {
                 ? 'Finish your current patient before taking another.'
                 : 'Take care locks you to this patient. Then use Update care to finish.'}
           </p>
-        </section>
+          </section>
+        </>
       ) : (
         <section className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
           <BedDouble className="mx-auto h-8 w-8 text-slate-300" />
@@ -302,6 +483,8 @@ export function RoomDetailPage() {
           )}
         </section>
       )}
+
+      {isDoctorView && patient && iAmCaring && <DoctorCriticalPanel patient={patient} />}
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <p className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -335,16 +518,6 @@ export function RoomDetailPage() {
         </div>
       </section>
 
-      {isDoctorView && patient && iAmCaring && (
-        <p className="text-center text-sm">
-          <Link
-            to={`/room/${roomId}/agent`}
-            className="text-amber-800 underline-offset-2 hover:underline"
-          >
-            Report Demo Agent mistake about this patient
-          </Link>
-        </p>
-      )}
     </div>
   )
 }

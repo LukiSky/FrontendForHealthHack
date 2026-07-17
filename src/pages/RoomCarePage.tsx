@@ -8,7 +8,7 @@ import {
   type LeaveCondition,
 } from '../data/conditionOptions'
 import { useClinic } from '../store/clinicStore'
-import type { Acuity, CarePhase } from '../state/types'
+import type { Acuity, CarePhase, Vitals } from '../state/types'
 
 /** Update care: condition chips + skip — call staff is its own menu page */
 export function RoomCarePage() {
@@ -20,8 +20,21 @@ export function RoomCarePage() {
 
   const [acuity, setAcuity] = useState<Acuity>(patient?.acuity ?? 'routine')
   const [phase, setPhase] = useState<CarePhase>(
-    patient?.carePhase === 'complete' ? 'in_consult' : (patient?.carePhase ?? 'in_consult'),
+    patient?.carePhase === 'awaiting_vitals' && viewingStaff?.role === 'nurse'
+      ? 'awaiting_exam'
+      : patient?.carePhase === 'complete'
+        ? 'in_consult'
+        : (patient?.carePhase ?? 'in_consult'),
   )
+  const [vitals, setVitals] = useState<Vitals>(patient?.vitals ?? {
+    height: '',
+    weight: '',
+    bloodPressure: '',
+    heartRate: '',
+    temperature: '',
+    respiratoryRate: '',
+    spo2: '',
+  })
   const [condition, setCondition] = useState<LeaveCondition | null>(null)
 
   if (!room) {
@@ -81,7 +94,7 @@ export function RoomCarePage() {
       type: 'UPDATE_PATIENT',
       payload: {
         patientId: activePatient.id,
-        vitals: activePatient.vitals,
+        vitals,
         notes: nextNotes,
         visitComplete,
         staffId: viewingStaff.id,
@@ -199,6 +212,37 @@ export function RoomCarePage() {
               ))}
             </div>
           </div>
+
+          {activePatient.carePhase === 'awaiting_vitals' && viewingStaff?.role === 'nurse' && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Record vitals
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ['bloodPressure', 'Blood pressure'],
+                    ['heartRate', 'Heart rate'],
+                    ['temperature', 'Temperature'],
+                    ['respiratoryRate', 'Respiratory rate'],
+                    ['spo2', 'SpO₂'],
+                    ['weight', 'Weight'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <label key={key} className="text-xs font-medium text-slate-600">
+                    {label}
+                    <input
+                      value={vitals[key]}
+                      onChange={(e) =>
+                        setVitals((previous) => ({ ...previous, [key]: e.target.value }))
+                      }
+                      className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">

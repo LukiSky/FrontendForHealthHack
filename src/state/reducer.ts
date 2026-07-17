@@ -5,9 +5,11 @@ import type {
   ClinicAction,
   ClinicState,
   RoomStatus,
+  SimulationStage,
 } from './types'
+import { createSeedState } from '../data/seed'
 
-function roomStatusFromPatients(
+export function roomStatusFromPatients(
   rooms: ClinicState['rooms'],
   patients: ClinicState['patients'],
 ): ClinicState['rooms'] {
@@ -38,8 +40,11 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
     case 'HYDRATE':
       return {
         ...action.payload,
+        rooms: roomStatusFromPatients(action.payload.rooms, action.payload.patients),
         directives: action.payload.directives ?? [],
         aiThoughts: action.payload.aiThoughts ?? [],
+        agentAssignEnabled: action.payload.agentAssignEnabled ?? true,
+        nextSimulationAt: action.payload.nextSimulationAt ?? Date.now() + 4_000,
       }
 
     case 'AI_BATCH': {
@@ -57,14 +62,153 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
         version: state.version + 1,
       }
 
+    case 'SET_AGENT_ASSIGN':
+      return {
+        ...state,
+        agentAssignEnabled: action.payload.enabled,
+        aiThoughts: pushThought(
+          state.aiThoughts,
+          action.payload.enabled
+            ? 'Admin resumed Demo Agent room assignment from waiting list.'
+            : 'Admin paused Demo Agent room assignment.',
+        ),
+        version: state.version + 1,
+      }
+
+    case 'AGENT_TICK':
+      return {
+        ...state,
+        lastAgentTickAt: action.payload.at ?? stamp(),
+        version: state.version + 1,
+      }
+
+    case 'RESET_DEMO': {
+      const seeded = createSeedState()
+      return {
+        ...seeded,
+        viewingAs: state.viewingAs,
+        aiThoughts: [
+          {
+            id: uid('thought'),
+            at: stamp(),
+            message:
+              'Demo reset — waiting queue is ready. Watch the agent choose a room, or assign next now.',
+          },
+          ...seeded.aiThoughts,
+        ].slice(0, 50),
+        activity: [
+          {
+            id: uid('act'),
+            at: stamp(),
+            staffId: 'admin-1',
+            patientId: '',
+            patientName: 'Clinic Admin',
+            action: 'Reset simulation demo',
+          },
+          ...seeded.activity,
+        ].slice(0, 100),
+        version: state.version + 1,
+      }
+    }
+
     case 'SET_STAFF_LOCATION': {
       const { staffId, roomId } = action.payload
+      const staff = state.staff.find((s) => s.id === staffId)
+      const roomName = roomId
+        ? (state.rooms.find((r) => r.id === roomId)?.name ?? roomId)
+        : null
+      const actionText = roomName
+        ? `Moved to ${roomName}`
+        : 'Left room (station)'
       return {
         ...state,
         staff: state.staff.map((s) =>
           s.id === staffId ? { ...s, currentRoomId: roomId } : s,
         ),
+        activity: staff
+          ? [
+              {
+                id: uid('act'),
+                at: stamp(),
+                staffId,
+                patientId: '',
+                patientName: staff.name,
+                action: actionText,
+              },
+              ...state.activity,
+            ].slice(0, 100)
+          : state.activity,
         version: state.version + 1,
+      }
+    }
+
+    case 'SIMULATION_TRANSITION': {
+      const { patientId, expectedStage, nextStage, carePhase, statusNote, vitals } =
+        action.payload
+      const patient = state.patients.find((p) => p.id === patientId)
+      if (
+        !patient ||
+        patient.visitComplete ||
+        !patient.roomId ||
+        patient.lifecyclePaused ||
+        patient.simulationStage !== expectedStage ||
+        state.directives.some(
+          (directive) =>
+            directive.patientId === patientId &&
+            directive.must &&
+            (directive.status === 'pending' || directive.status === 'accepted'),
+        )
+      ) {
+        return state
+      }
+
+      const at = stamp()
+      const patients = state.patients.map((p) =>
+        p.id === patientId
+          ? {
+              ...p,
+              carePhase,
+              statusNote,
+              statusUpdatedAt: at,
+              simulationStage: nextStage,
+              lifecycleUpdatedAt: at,
+              vitals: { ...p.vitals, ...vitals },
+              history: [
+                {
+                  id: uid('h'),
+                  at,
+                  staffId: 'ai-agent',
+                  staffName: 'Demo Agent',
+                  summary: statusNote,
+                },
+                ...p.history,
+              ],
+            }
+          : p,
+      )
+
+      return {
+        ...state,
+        patients,
+        activity: [
+          {
+            id: uid('act'),
+            at,
+            staffId: 'ai-agent',
+            patientId,
+            patientName: patient.name,
+            action: `Lifecycle: ${statusNote}`,
+          },
+          ...state.activity,
+        ].slice(0, 100),
+        aiThoughts: pushThought(
+          state.aiThoughts,
+          `${patient.name} in ${
+            state.rooms.find((room) => room.id === patient.roomId)?.name ?? patient.roomId
+          }: ${statusNote}`,
+        ),
+        version: state.version + 1,
+        nextSimulationAt: Date.now() + 7_000,
       }
     }
 
@@ -148,6 +292,14 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
             at: stamp(),
             staffId: d.staffId,
             patientId: d.patientId,
+            patientName: state.staff.find((s) => s.id === d.staffId)?.name ?? '',
+            action: `Moved to ${room?.name ?? d.roomId}`,
+          },
+          {
+            id: uid('act'),
+            at: stamp(),
+            staffId: d.staffId,
+            patientId: d.patientId,
             patientName: state.patients.find((p) => p.id === d.patientId)?.name ?? '',
             action: `Accepted AI task: ${d.title}`,
           },
@@ -181,6 +333,9 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
     case 'COMPLETE_DIRECTIVE': {
       const d = state.directives.find((x) => x.id === action.payload.directiveId)
       if (!d) return state
+      const staffName = state.staff.find((s) => s.id === d.staffId)?.name ?? d.staffId
+      const patientName = state.patients.find((p) => p.id === d.patientId)?.name ?? ''
+      const roomName = state.rooms.find((r) => r.id === d.roomId)?.name ?? d.roomId
       return {
         ...state,
         directives: state.directives.map((x) =>
@@ -197,20 +352,96 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
           if (d.phase === 'exam') return { ...p, carePhase: 'in_consult' as const }
           return p
         }),
+        activity: [
+          {
+            id: uid('act'),
+            at: stamp(),
+            staffId: d.staffId,
+            patientId: d.patientId,
+            patientName,
+            action: `Must-move complete: ${staffName} arrived in ${roomName}`,
+          },
+          ...state.activity,
+        ].slice(0, 100),
+        aiThoughts: pushThought(
+          state.aiThoughts,
+          `Must-move complete: ${staffName} arrived in ${roomName} for ${patientName}.`,
+        ),
         version: state.version + 1,
       }
     }
 
     case 'ADMIT_PATIENT': {
-      const { id, name, age, reason, vitals, roomId, acuity } = action.payload
+      const {
+        id,
+        name,
+        preferredName = '',
+        age,
+        dateOfBirth = '',
+        sex = '',
+        phone = '',
+        email = '',
+        address = '',
+        emergencyName = '',
+        emergencyPhone = '',
+        emergencyRelation = '',
+        preferredLanguage = 'English',
+        insuranceProvider = '',
+        insuranceId = '',
+        referringSource = '',
+        arrivalMode = '',
+        reason,
+        symptomOnset = '',
+        symptomDuration = '',
+        painScore = '',
+        allergies = '',
+        medications = '',
+        pastMedicalHistory = '',
+        vitals,
+        notes = '',
+        roomId,
+        acuity,
+        chartIncomplete = false,
+      } = action.payload
       const hasVitals = Boolean(
-        vitals.bloodPressure || vitals.heartRate || vitals.temperature,
+        vitals.bloodPressure ||
+          vitals.heartRate ||
+          vitals.temperature ||
+          vitals.respiratoryRate ||
+          vitals.spo2,
       )
+      const detailBits = [
+        allergies.trim() && `Allergies: ${allergies.trim()}`,
+        medications.trim() && `Meds: ${medications.trim()}`,
+        painScore.trim() && `Pain ${painScore.trim()}/10`,
+        arrivalMode && `Arrival: ${arrivalMode}`,
+        chartIncomplete && 'Chart incomplete — finish intake later',
+      ].filter(Boolean)
       const patient = {
         id,
         name,
+        preferredName,
         age,
+        dateOfBirth,
+        sex,
+        phone,
+        email,
+        address,
+        emergencyName,
+        emergencyPhone,
+        emergencyRelation,
+        preferredLanguage,
+        insuranceProvider,
+        insuranceId,
+        referringSource,
+        arrivalMode,
         reason,
+        symptomOnset,
+        symptomDuration,
+        painScore,
+        allergies,
+        medications,
+        pastMedicalHistory,
         vitals: { ...vitals },
         roomId,
         history: [
@@ -219,26 +450,34 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
             at: stamp(),
             staffId: 'admin-1',
             staffName: 'Clinic Admin',
-            summary: `Admitted for: ${reason}`,
+            summary: [
+              chartIncomplete
+                ? `Quick urgent admit: ${reason}`
+                : roomId
+                  ? `Admitted for: ${reason}`
+                  : `Added to waiting list: ${reason}`,
+              ...detailBits,
+            ].join(' · '),
           },
         ],
-        notes: '',
+        notes,
         visitComplete: false,
+        chartIncomplete,
         admittedAt: stamp(),
         carePhase: (hasVitals ? 'awaiting_exam' : 'awaiting_vitals') as CarePhase,
         acuity: acuity ?? 'routine',
       }
+      const targetOccupied = roomId
+        ? state.patients.some((p) => p.roomId === roomId && !p.visitComplete)
+        : false
+      if (targetOccupied) return state
       const nextPatients = [
-        ...state.patients
-          .filter((p) => p.id !== id)
-          .map((p) =>
-            p.roomId === roomId && !p.visitComplete
-              ? { ...p, visitComplete: true, roomId: null, carePhase: 'complete' as const }
-              : p,
-          ),
+        ...state.patients.filter((p) => p.id !== id),
         patient,
       ]
-      const roomName = state.rooms.find((r) => r.id === roomId)?.name ?? roomId
+      const roomName = roomId
+        ? (state.rooms.find((r) => r.id === roomId)?.name ?? roomId)
+        : 'waiting list'
       return {
         ...state,
         patients: nextPatients,
@@ -250,15 +489,207 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
             staffId: 'admin-1',
             patientId: id,
             patientName: name,
-            action: `Admitted to ${roomName}`,
+            action: chartIncomplete
+              ? `Quick urgent admit to ${roomName} (chart incomplete)`
+              : roomId
+                ? `Admitted to ${roomName}`
+                : 'Added to waiting list',
           },
           ...state.activity,
         ].slice(0, 100),
         aiThoughts: pushThought(
           state.aiThoughts,
-          `New admit: ${name} in ${roomName} (${patient.acuity}) — Demo Agent observing (no auto-move).`,
+          chartIncomplete
+            ? `Quick urgent: ${name} → ${roomName} (${patient.acuity}) — finish chart later.`
+            : roomId
+              ? `New admit: ${name} in ${roomName} (${patient.acuity}).`
+              : `Waiting list: ${name} (${patient.acuity}) — Demo Agent will assign a room.`,
+        ),
+        agentAssignmentNotBefore:
+          roomId === null ? Date.now() + 4_000 : state.agentAssignmentNotBefore,
+        version: state.version + 1,
+      }
+    }
+
+    case 'COMPLETE_INTAKE': {
+      const {
+        patientId,
+        name,
+        preferredName = '',
+        age,
+        dateOfBirth = '',
+        sex = '',
+        phone = '',
+        email = '',
+        address = '',
+        emergencyName = '',
+        emergencyPhone = '',
+        emergencyRelation = '',
+        preferredLanguage = 'English',
+        insuranceProvider = '',
+        insuranceId = '',
+        referringSource = '',
+        arrivalMode = '',
+        reason,
+        symptomOnset = '',
+        symptomDuration = '',
+        painScore = '',
+        allergies = '',
+        medications = '',
+        pastMedicalHistory = '',
+        vitals,
+        notes = '',
+        acuity,
+      } = action.payload
+      const existing = state.patients.find((p) => p.id === patientId && !p.visitComplete)
+      if (!existing) return state
+      const hasVitals = Boolean(
+        vitals.bloodPressure ||
+          vitals.heartRate ||
+          vitals.temperature ||
+          vitals.respiratoryRate ||
+          vitals.spo2,
+      )
+      const nextPatients = state.patients.map((p) => {
+        if (p.id !== patientId) return p
+        return {
+          ...p,
+          name,
+          preferredName,
+          age,
+          dateOfBirth,
+          sex,
+          phone,
+          email,
+          address,
+          emergencyName,
+          emergencyPhone,
+          emergencyRelation,
+          preferredLanguage,
+          insuranceProvider,
+          insuranceId,
+          referringSource,
+          arrivalMode,
+          reason,
+          symptomOnset,
+          symptomDuration,
+          painScore,
+          allergies,
+          medications,
+          pastMedicalHistory,
+          vitals: { ...vitals },
+          notes,
+          chartIncomplete: false,
+          acuity: acuity ?? p.acuity,
+          carePhase:
+            hasVitals && p.carePhase === 'awaiting_vitals'
+              ? ('awaiting_exam' as CarePhase)
+              : p.carePhase,
+          history: [
+            {
+              id: uid('h'),
+              at: stamp(),
+              staffId: 'admin-1',
+              staffName: 'Clinic Admin',
+              summary: 'Intake chart completed',
+            },
+            ...p.history,
+          ],
+        }
+      })
+      return {
+        ...state,
+        patients: nextPatients,
+        activity: [
+          {
+            id: uid('act'),
+            at: stamp(),
+            staffId: 'admin-1',
+            patientId,
+            patientName: name,
+            action: 'Completed intake chart',
+          },
+          ...state.activity,
+        ].slice(0, 100),
+        aiThoughts: pushThought(
+          state.aiThoughts,
+          `Intake complete for ${name} — chart no longer incomplete.`,
         ),
         version: state.version + 1,
+      }
+    }
+
+    case 'MOVE_PATIENT': {
+      const { patientId, roomId, by, note } = action.payload
+      const patient = state.patients.find((p) => p.id === patientId && !p.visitComplete)
+      const room = state.rooms.find((r) => r.id === roomId)
+      if (!patient || !room || room.status === 'cleaning') return state
+      const targetOccupied = state.patients.some(
+        (p) => p.id !== patientId && p.roomId === roomId && !p.visitComplete,
+      )
+      if (targetOccupied) return state
+
+      const fromWaiting = !patient.roomId
+      const nextPatients = state.patients.map((p) => {
+        if (p.id === patientId) {
+          return {
+            ...p,
+            roomId,
+            carePhase: fromWaiting ? 'awaiting_vitals' : p.carePhase,
+            statusNote: fromWaiting
+              ? `Arrived in ${room.name} — waiting for initial vitals.`
+              : `Moved to ${room.name} — care team notified.`,
+            statusUpdatedAt: stamp(),
+            simulationStage: fromWaiting ? 'roomed' : p.simulationStage,
+            lifecycleUpdatedAt: stamp(),
+            lifecyclePaused: false,
+            history: [
+              {
+                id: uid('h'),
+                at: stamp(),
+                staffId: by === 'agent' ? 'ai-agent' : 'admin-1',
+                staffName: by === 'agent' ? 'Demo Agent' : 'Clinic Admin',
+                summary:
+                  note ??
+                  (fromWaiting
+                    ? `Assigned from waiting list to ${room.name}`
+                    : `Moved to ${room.name}`),
+              },
+              ...p.history,
+            ],
+          }
+        }
+        return p
+      })
+
+      const who = by === 'agent' ? 'Demo Agent' : 'Admin'
+      const actionText = fromWaiting
+        ? `${who} assigned to ${room.name} from waiting`
+        : `${who} moved to ${room.name}`
+
+      return {
+        ...state,
+        patients: nextPatients,
+        rooms: roomStatusFromPatients(state.rooms, nextPatients),
+        activity: [
+          {
+            id: uid('act'),
+            at: stamp(),
+            staffId: by === 'agent' ? 'ai-agent' : 'admin-1',
+            patientId,
+            patientName: patient.name,
+            action: actionText,
+          },
+          ...state.activity,
+        ].slice(0, 100),
+        aiThoughts: pushThought(
+          state.aiThoughts,
+          by === 'agent'
+            ? `Assigning ${patient.name} → ${room.name} (${patient.acuity}) from waiting list.`
+            : `Admin override: ${patient.name} → ${room.name}${note ? ` — ${note}` : ''}.`,
+        ),
+        version: state.version + 1,
+        nextSimulationAt: fromWaiting ? Date.now() + 5_000 : state.nextSimulationAt,
       }
     }
 
@@ -272,6 +703,13 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
           : 'Updated vitals / clinical notes.'
         let nextPhase: CarePhase = carePhase ?? p.carePhase
         if (visitComplete) nextPhase = 'complete'
+        const simulationStage: SimulationStage = visitComplete
+          ? 'ready_for_discharge'
+          : nextPhase === 'awaiting_vitals'
+            ? 'roomed'
+            : nextPhase === 'awaiting_exam'
+              ? 'awaiting_exam'
+              : 'ready_for_discharge'
         return {
           ...p,
           vitals: { ...vitals },
@@ -280,6 +718,13 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
           roomId: visitComplete ? null : p.roomId,
           carePhase: nextPhase,
           acuity: acuity ?? p.acuity,
+          statusNote: visitComplete
+            ? 'Visit completed — room released.'
+            : `${staffName} updated care — ${nextPhase.replace(/_/g, ' ')}.`,
+          statusUpdatedAt: stamp(),
+          simulationStage,
+          lifecycleUpdatedAt: stamp(),
+          lifecyclePaused: !visitComplete,
           history: [
             {
               id: uid('h'),
@@ -321,7 +766,16 @@ export function clinicReducer(state: ClinicState, action: ClinicAction): ClinicS
       return {
         ...state,
         patients: state.patients.map((p) =>
-          p.id === patientId ? { ...p, acuity } : p,
+          p.id === patientId
+            ? {
+                ...p,
+                acuity,
+                statusNote: `${staffName} changed triage to ${acuity}.`,
+                statusUpdatedAt: stamp(),
+                lifecyclePaused: true,
+                lifecycleUpdatedAt: stamp(),
+              }
+            : p,
         ),
         aiThoughts: pushThought(
           state.aiThoughts,

@@ -6,42 +6,31 @@ import { formatTime } from '../utils/ids'
 
 export function StaffDashboardPage() {
   const { id } = useParams<{ id: string }>()
-  const { state, dispatch, viewingStaff } = useClinic()
+  const { state } = useClinic()
   const staff = state.staff.find((s) => s.id === id)
 
   if (!staff || staff.role === 'admin') {
     return (
       <div className="space-y-3">
         <p className="text-slate-600">Staff member not found.</p>
-        <Link to="/#staff" className="text-sm text-emerald-700 hover:underline">
-          Back to staff table
+        <Link to="/move" className="text-sm text-emerald-700 hover:underline">
+          Back to staff movement
         </Link>
       </div>
     )
   }
 
   const currentRoom = state.rooms.find((r) => r.id === staff.currentRoomId)
-  const isSelf = viewingStaff?.id === staff.id
   const todayHistory = state.activity.filter((a) => a.staffId === staff.id)
-
-  function updateLocation(roomId: string) {
-    dispatch({
-      type: 'SET_STAFF_LOCATION',
-      payload: {
-        staffId: staff!.id,
-        roomId: roomId === '' ? null : roomId,
-      },
-    })
-  }
 
   return (
     <div className="space-y-4">
       <div>
         <Link
-          to="/#staff"
+          to="/move"
           className="mb-1 inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800"
         >
-          <ArrowLeft className="h-3 w-3" /> Staff table
+          <ArrowLeft className="h-3 w-3" /> Staff movement
         </Link>
         <h1 className="text-xl font-semibold text-slate-900">{staff.name}</h1>
         <p className="text-sm capitalize text-slate-500">
@@ -126,23 +115,9 @@ export function StaffDashboardPage() {
             )}
           </p>
 
-          <label className="block text-xs font-medium text-slate-600">
-            {isSelf ? 'Change my location' : 'Update location (demo)'}
-            <select
-              value={staff.currentRoomId ?? ''}
-              onChange={(e) => updateLocation(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-2.5 py-2 text-sm"
-            >
-              <option value="">Not in a room</option>
-              {state.rooms.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="mt-2 text-[11px] text-slate-400">
-            Or use Accept on an AI directive to move automatically.
+          <p className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Location changes through Take care, Update care, or Accept &amp; Move. Admin-only
+            simulation overrides are available on Demo Live.
           </p>
         </section>
       </div>

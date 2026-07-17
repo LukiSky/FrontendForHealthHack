@@ -98,8 +98,8 @@ export function DoctorCriticalPanel({ patient }: { patient: Patient }) {
           <h2 className="text-sm font-semibold text-red-950">Critical override (demo)</h2>
         </div>
         <p className="mb-3 text-xs text-red-800">
-          Demo Agent does not auto-move staff. Press options — only you can declare a must-move
-          when it is truly critical.
+          The Demo Agent runs routine rounds. Use this control to declare a must-move when this
+          patient's condition needs an immediate, clinician-directed response.
         </p>
 
         <p className="mb-1.5 text-xs font-medium text-red-900">Patient acuity</p>

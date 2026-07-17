@@ -3,8 +3,14 @@ import type { Room, StaffMember } from '../state/types'
 /** Clinic floor units → meters (demo scale). */
 export const METERS_PER_UNIT = 2
 
-/** Default station when staff are not in a room (lobby / nurses' station). */
-export const STATION_POS = { x: 15, y: 42 }
+/**
+ * Nurses’ station / lobby anchor (below the 5×6 room grid).
+ * Room grid: x 0–70, y 0–56.
+ */
+export const STATION_POS = { x: 35, y: 72 }
+
+/** Waiting bay on the floor plan (left of station). */
+export const WAITING_POS = { x: -16, y: 72 }
 
 export function roomDistanceMeters(a: Room, b: Room): number {
   const dx = a.x - b.x

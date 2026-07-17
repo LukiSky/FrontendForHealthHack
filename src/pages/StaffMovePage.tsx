@@ -6,6 +6,7 @@ import {
   Stethoscope,
   User,
 } from 'lucide-react'
+import { AcuityBadge } from '../components/AcuityBadge'
 import { AiDirectivePanel } from '../components/ai/AiDirectivePanel'
 import { useClinic } from '../store/clinicStore'
 
@@ -33,7 +34,7 @@ export function StaffMovePage() {
         <h1 className="text-2xl font-semibold text-slate-900">Where to go</h1>
         <p className="mt-1 text-sm text-slate-500">
           No free-for-all &quot;Move here&quot;. Enter a room to view it, or Accept a{' '}
-          <strong>doctor critical must-move</strong>. Use &quot;I&apos;m here&quot; inside a
+          <strong>critical must-move</strong>. Use &quot;I&apos;m here&quot; inside a
           room to check in.
         </p>
       </div>
@@ -127,7 +128,8 @@ export function StaffMovePage() {
                   <>
                     <span className="font-medium">{patient.name}</span>
                     <span className="block text-xs text-slate-500">
-                      {patient.acuity} · {patient.reason}
+                      <AcuityBadge acuity={patient.acuity} />{' '}
+                      <span className="ml-1">{patient.reason}</span>
                     </span>
                   </>
                 ) : (

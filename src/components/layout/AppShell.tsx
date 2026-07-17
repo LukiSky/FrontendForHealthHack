@@ -5,10 +5,12 @@ import {
   BedDouble,
   Bot,
   ClipboardEdit,
+  Clock,
   LayoutDashboard,
   Menu,
   Navigation,
   PhoneCall,
+  Siren,
   UserPlus,
   Users,
   X,
@@ -32,20 +34,21 @@ function useRoleMenu(): NavItem[] {
   if (isAiView) {
     return [
       { to: '/rooms', label: 'Demo Overview', icon: Bot, end: true },
-      { to: '/#staff', label: 'Staff table', icon: Users },
+      { to: '/move', label: 'Staff movement', icon: Users },
     ]
   }
 
   if (isGeneralView) {
     return [
-      { to: '/', label: 'Ops', icon: LayoutDashboard, end: true },
+      { to: '/', label: 'Simulation', icon: LayoutDashboard, end: true },
       { to: '/rooms', label: 'Rooms', icon: BedDouble },
     ]
   }
 
   if (isAdminView) {
     return [
-      { to: '/', label: 'Ops', icon: LayoutDashboard, end: true },
+      { to: '/admin/demo', label: 'Demo Live', icon: Siren, end: true },
+      { to: '/admin/patients', label: 'Patients', icon: Clock },
       { to: '/admin/intake', label: 'Intake', icon: UserPlus },
       { to: '/rooms', label: 'Rooms', icon: BedDouble },
     ]
@@ -82,7 +85,7 @@ function useRoleMenu(): NavItem[] {
       ]
     }
     return [
-      { to: '/my-dashboard', label: 'My rooms', icon: Users, end: true },
+      { to: '/my-dashboard', label: 'Staff queue', icon: Users, end: true },
       { to: '/move', label: 'Where to go', icon: Navigation },
       { to: '/rooms', label: 'All rooms', icon: BedDouble },
     ]

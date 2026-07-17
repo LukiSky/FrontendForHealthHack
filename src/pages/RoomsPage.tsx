@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { BedDouble, Bot, MapPin, Radio, Stethoscope, User } from 'lucide-react'
+import { AcuityBadge } from '../components/AcuityBadge'
 import { useClinic } from '../store/clinicStore'
 import { formatTime } from '../utils/ids'
 
@@ -25,21 +26,21 @@ export function RoomsPage() {
           {isAiView ? 'Demo Agent — live thoughts' : 'Rooms & Demo Dispatch'}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          Live rooms and Demo Agent thoughts. Routine cases are observe-only — moves only when a
-          doctor issues a critical must-move.
+          Live rooms and Demo Agent thoughts. The agent assigns waiting patients to free rooms;
+          clinician location changes appear after care actions or critical must-moves.
         </p>
       </div>
 
       <div className="rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
-        <span className="font-semibold">Demo routing logic</span> — replace with a real AI agent
-        later. No auto-move for routine patients.
+        <span className="font-semibold">Demo routing logic</span> — highest-acuity waiting
+        patient goes to the closest free room. Staff only move for care actions or must-moves.
       </div>
 
       {notify?.aiNotified && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
           <span className="font-semibold">Demo Agent notified</span> — observing{' '}
-          {notify.patientName ?? 'new patient'} (no auto-move). A doctor can issue a critical
-          must-move from the Live Room View.
+          {notify.patientName ?? 'new patient'}. Waiting patients are assigned to free rooms;
+          a doctor can issue a critical must-move from the Live Room View.
           {notify.roomId && (
             <>
               {' '}
@@ -124,7 +125,8 @@ export function RoomsPage() {
                     <p className="text-sm text-slate-700">
                       <span className="font-medium">{patient.name}</span>
                       <span className="block text-xs text-slate-500">
-                        {patient.reason} · {patient.acuity} ·{' '}
+                        <AcuityBadge acuity={patient.acuity} />{' '}
+                        <span className="ml-1">{patient.reason} · </span>
                         {patient.carePhase.replace(/_/g, ' ')}
                       </span>
                     </p>

@@ -2,6 +2,12 @@ export type StaffRole = 'doctor' | 'nurse' | 'admin'
 export type RoomStatus = 'available' | 'occupied' | 'cleaning'
 export type CarePhase = 'awaiting_vitals' | 'awaiting_exam' | 'in_consult' | 'complete'
 export type Acuity = 'routine' | 'urgent' | 'critical'
+export type SimulationStage =
+  | 'waiting'
+  | 'roomed'
+  | 'vitals_recorded'
+  | 'awaiting_exam'
+  | 'ready_for_discharge'
 export type DirectiveStatus = 'pending' | 'accepted' | 'declined' | 'completed' | 'superseded'
 export type DirectivePhase = 'vitals' | 'exam' | 'followup'
 export type DirectivePriority = 'high' | 'normal'
@@ -12,7 +18,17 @@ export interface Vitals {
   bloodPressure: string
   heartRate: string
   temperature: string
+  respiratoryRate: string
+  spo2: string
 }
+
+export type ArrivalMode =
+  | ''
+  | 'walk-in'
+  | 'ambulance'
+  | 'referral'
+  | 'scheduled'
+  | 'transfer'
 
 export interface PatientHistoryEntry {
   id: string
@@ -25,16 +41,105 @@ export interface PatientHistoryEntry {
 export interface Patient {
   id: string
   name: string
+  preferredName: string
   age: number
+  dateOfBirth: string
+  sex: string
+  phone: string
+  email: string
+  address: string
+  emergencyName: string
+  emergencyPhone: string
+  emergencyRelation: string
+  preferredLanguage: string
+  insuranceProvider: string
+  insuranceId: string
+  referringSource: string
+  arrivalMode: ArrivalMode
   reason: string
+  symptomOnset: string
+  symptomDuration: string
+  painScore: string
+  allergies: string
+  medications: string
+  pastMedicalHistory: string
   vitals: Vitals
   roomId: string | null
   history: PatientHistoryEntry[]
   notes: string
   visitComplete: boolean
+  /** True when admitted via Quick urgent — full chart still needed */
+  chartIncomplete: boolean
   admittedAt: string
   carePhase: CarePhase
   acuity: Acuity
+  /** Plain-language, live condition update shown on the room board. */
+  statusNote?: string
+  statusUpdatedAt?: string
+  /** Persisted, guarded demo lifecycle. Manual care may pause this progression. */
+  simulationStage?: SimulationStage
+  lifecycleUpdatedAt?: string
+  lifecyclePaused?: boolean
+}
+
+/** Defaults for new / migrated patients */
+export function emptyVitals(): Vitals {
+  return {
+    height: '',
+    weight: '',
+    bloodPressure: '',
+    heartRate: '',
+    temperature: '',
+    respiratoryRate: '',
+    spo2: '',
+  }
+}
+
+export function emptyPatientProfile(): Pick<
+  Patient,
+  | 'preferredName'
+  | 'dateOfBirth'
+  | 'sex'
+  | 'phone'
+  | 'email'
+  | 'address'
+  | 'emergencyName'
+  | 'emergencyPhone'
+  | 'emergencyRelation'
+  | 'preferredLanguage'
+  | 'insuranceProvider'
+  | 'insuranceId'
+  | 'referringSource'
+  | 'arrivalMode'
+  | 'symptomOnset'
+  | 'symptomDuration'
+  | 'painScore'
+  | 'allergies'
+  | 'medications'
+  | 'pastMedicalHistory'
+> {
+  return {
+    preferredName: '',
+    dateOfBirth: '',
+    sex: '',
+    phone: '',
+    email: '',
+    address: '',
+    emergencyName: '',
+    emergencyPhone: '',
+    emergencyRelation: '',
+    preferredLanguage: 'English',
+    insuranceProvider: '',
+    insuranceId: '',
+    referringSource: '',
+    arrivalMode: '',
+    symptomOnset: '',
+    symptomDuration: '',
+    painScore: '',
+    allergies: '',
+    medications: '',
+    pastMedicalHistory: '',
+  }
 }
 
 export interface ScheduleSlot {
@@ -100,7 +205,7 @@ export function isStaffViewingAs(viewingAs: ViewingAs): boolean {
 
 export function homePathForView(viewingAs: ViewingAs): string {
   if (viewingAs === 'general') return '/'
-  if (viewingAs === 'admin') return '/'
+  if (viewingAs === 'admin') return '/admin/demo'
   if (viewingAs === 'ai') return '/rooms'
   return '/my-dashboard'
 }
@@ -113,6 +218,14 @@ export interface ClinicState {
   activity: ActivityEntry[]
   directives: AiDirective[]
   aiThoughts: AiThought[]
+  /** When false, Demo Agent will not auto-assign waiting patients to rooms */
+  agentAssignEnabled: boolean
+  /** Keeps new/reset waiting patients visible before automatic assignment begins. */
+  agentAssignmentNotBefore: number
+  /** ISO timestamp of the last Demo Agent tick — drives the live sim clock UI */
+  lastAgentTickAt: string
+  /** Next patient-only lifecycle transition; persisted for reliable multi-tab playback. */
+  nextSimulationAt: number
   version: number
 }
 
@@ -122,13 +235,90 @@ export type ClinicAction =
       payload: {
         id: string
         name: string
+        preferredName?: string
         age: number
+        dateOfBirth?: string
+        sex?: string
+        phone?: string
+        email?: string
+        address?: string
+        emergencyName?: string
+        emergencyPhone?: string
+        emergencyRelation?: string
+        preferredLanguage?: string
+        insuranceProvider?: string
+        insuranceId?: string
+        referringSource?: string
+        arrivalMode?: ArrivalMode
         reason: string
+        symptomOnset?: string
+        symptomDuration?: string
+        painScore?: string
+        allergies?: string
+        medications?: string
+        pastMedicalHistory?: string
         vitals: Vitals
-        roomId: string
+        notes?: string
+        roomId: string | null
+        acuity?: Acuity
+        chartIncomplete?: boolean
+      }
+    }
+  | {
+      type: 'COMPLETE_INTAKE'
+      payload: {
+        patientId: string
+        name: string
+        preferredName?: string
+        age: number
+        dateOfBirth?: string
+        sex?: string
+        phone?: string
+        email?: string
+        address?: string
+        emergencyName?: string
+        emergencyPhone?: string
+        emergencyRelation?: string
+        preferredLanguage?: string
+        insuranceProvider?: string
+        insuranceId?: string
+        referringSource?: string
+        arrivalMode?: ArrivalMode
+        reason: string
+        symptomOnset?: string
+        symptomDuration?: string
+        painScore?: string
+        allergies?: string
+        medications?: string
+        pastMedicalHistory?: string
+        vitals: Vitals
+        notes?: string
         acuity?: Acuity
       }
     }
+  | {
+      type: 'MOVE_PATIENT'
+      payload: {
+        patientId: string
+        roomId: string
+        by: 'agent' | 'admin'
+        note?: string
+      }
+    }
+  | { type: 'SET_AGENT_ASSIGN'; payload: { enabled: boolean } }
+  | { type: 'AGENT_TICK'; payload: { at?: string } }
+  | {
+      type: 'SIMULATION_TRANSITION'
+      payload: {
+        patientId: string
+        expectedStage: SimulationStage
+        nextStage: SimulationStage
+        carePhase: CarePhase
+        statusNote: string
+        vitals?: Partial<Vitals>
+      }
+    }
+  | { type: 'RESET_DEMO' }
   | {
       type: 'UPDATE_PATIENT'
       payload: {

@@ -55,7 +55,7 @@ function usePageSubnav(): SubNavItem[] {
   if (staffId) {
     const person = state.staff.find((s) => s.id === staffId)
     return [
-      { to: '/#staff', label: 'Staff table' },
+      { to: '/move', label: 'Staff movement' },
       ...(person ? [{ to: `/staff/${person.id}`, label: person.name, end: true }] : []),
     ]
   }
@@ -71,24 +71,23 @@ function usePageSubnav(): SubNavItem[] {
     return [{ to: '/rooms', label: 'Overview', end: true }]
   }
 
-  // Admin / general ops surface
-  if (
-    (isAdminView || isGeneralView) &&
-    (path === '/' || path.startsWith('/admin'))
-  ) {
-    const items: SubNavItem[] = [
-      { to: '/', label: 'Ops', end: true },
-      { to: '/#patients', label: 'Patients' },
-      { to: '/#staff', label: 'Staff' },
+  if (isAdminView && path.startsWith('/admin')) {
+    return [
+      { to: '/admin/demo', label: 'Demo Live', end: true },
+      { to: '/admin/patients', label: 'Patients', end: true },
+      { to: '/admin/intake', label: 'Intake', end: true },
     ]
-    if (isAdminView) {
-      items.push({ to: '/admin/intake', label: 'Intake', end: true })
-    }
-    return items
+  }
+
+  if (isGeneralView && path === '/') {
+    return [
+      { to: '/', label: 'Simulation', end: true },
+      { to: '/rooms', label: 'Rooms', end: true },
+    ]
   }
 
   if (isAiView && path === '/staff') {
-    return [{ to: '/', label: 'Ops staff table' }]
+    return [{ to: '/', label: 'Simulation' }]
   }
 
   return []

@@ -12,12 +12,12 @@ import {
 } from 'react'
 import { createSeedState } from '../data/seed'
 import { useAiAgent } from '../hooks/useAiAgent'
-import { clinicReducer } from '../state/reducer'
+import { clinicReducer, roomStatusFromPatients } from '../state/reducer'
 import type { ClinicAction, ClinicState, StaffMember, ViewingAs } from '../state/types'
-import { homePathForView, isStaffViewingAs } from '../state/types'
+import { emptyPatientProfile, emptyVitals, homePathForView, isStaffViewingAs } from '../state/types'
 
-const STORAGE_KEY = 'clinic-room-mgmt-v4'
-const CHANNEL_NAME = 'clinic-room-mgmt-sync-v4'
+const STORAGE_KEY = 'clinic-room-mgmt-v6'
+const CHANNEL_NAME = 'clinic-room-mgmt-sync-v6'
 const VIEW_KEY = 'clinic-viewing-as'
 
 type SharedState = Omit<ClinicState, 'viewingAs'>
@@ -25,20 +25,50 @@ type SharedState = Omit<ClinicState, 'viewingAs'>
 function migrateShared(raw: Partial<ClinicState>): SharedState {
   const seed = createSeedState()
   const { viewingAs: _, ...seedRest } = seed
-  return {
+  const migrated: SharedState = {
     ...seedRest,
     ...raw,
-    rooms: (raw.rooms?.length ? raw.rooms : seedRest.rooms).map((r, i) => ({
-      ...seedRest.rooms[i % seedRest.rooms.length]!,
-      ...r,
-      x: r.x ?? seedRest.rooms.find((s) => s.id === r.id)?.x ?? i * 12,
-      y: r.y ?? seedRest.rooms.find((s) => s.id === r.id)?.y ?? 0,
-    })),
-    patients: (raw.patients ?? seedRest.patients).map((p) => ({
-      ...p,
-      carePhase: p.carePhase ?? 'awaiting_exam',
-      acuity: p.acuity ?? 'routine',
-    })),
+    rooms: (() => {
+      const rawRooms = raw.rooms ?? []
+      // Always prefer full 30-room seed when stored state is from an older layout
+      if (rawRooms.length < seedRest.rooms.length) {
+        return seedRest.rooms.map((r) => ({ ...r }))
+      }
+      return rawRooms.map((r, i) => ({
+        ...seedRest.rooms[i % seedRest.rooms.length]!,
+        ...r,
+        x: r.x ?? seedRest.rooms.find((s) => s.id === r.id)?.x ?? i * 14,
+        y: r.y ?? seedRest.rooms.find((s) => s.id === r.id)?.y ?? 0,
+      }))
+    })(),
+    patients: (raw.patients ?? seedRest.patients).map((p) => {
+      const seedMatch = seedRest.patients.find((s) => s.id === p.id)
+      return {
+        ...emptyPatientProfile(),
+        ...seedMatch,
+        ...p,
+        vitals: {
+          ...emptyVitals(),
+          ...seedMatch?.vitals,
+          ...p.vitals,
+        },
+        history: p.history ?? seedMatch?.history ?? [],
+        carePhase: p.carePhase ?? seedMatch?.carePhase ?? 'awaiting_exam',
+        acuity: p.acuity ?? seedMatch?.acuity ?? 'routine',
+        chartIncomplete: p.chartIncomplete ?? seedMatch?.chartIncomplete ?? false,
+        simulationStage:
+          p.simulationStage ??
+          (!p.roomId
+            ? 'waiting'
+            : p.carePhase === 'awaiting_vitals'
+              ? 'roomed'
+              : p.carePhase === 'awaiting_exam'
+                ? 'awaiting_exam'
+                : 'ready_for_discharge'),
+        lifecycleUpdatedAt: p.lifecycleUpdatedAt ?? p.statusUpdatedAt ?? p.admittedAt,
+        lifecyclePaused: p.lifecyclePaused ?? false,
+      }
+    }),
     staff: (raw.staff ?? seedRest.staff).map((s) => ({
       ...s,
       currentTaskId: s.currentTaskId ?? null,
@@ -49,7 +79,16 @@ function migrateShared(raw: Partial<ClinicState>): SharedState {
       must: d.must ?? false,
     })),
     aiThoughts: raw.aiThoughts ?? seedRest.aiThoughts,
+    agentAssignEnabled: raw.agentAssignEnabled ?? true,
+    agentAssignmentNotBefore:
+      raw.agentAssignmentNotBefore ?? Date.now() + 2_000,
+    lastAgentTickAt: raw.lastAgentTickAt ?? new Date().toISOString(),
+    nextSimulationAt: raw.nextSimulationAt ?? Date.now() + 4_000,
     version: raw.version ?? 1,
+  }
+  return {
+    ...migrated,
+    rooms: roomStatusFromPatients(migrated.rooms, migrated.patients),
   }
 }
 
@@ -124,6 +163,8 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
   const [viewingAs, setViewingAsState] = useState<ViewingAs>(loadViewingAs)
   const skipBroadcast = useRef(false)
   const channelRef = useRef<BroadcastChannel | null>(null)
+  const sharedVersionRef = useRef(shared.version)
+  sharedVersionRef.current = shared.version
 
   const state: ClinicState = useMemo(
     () => ({ ...shared, viewingAs }),
@@ -134,7 +175,7 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
     const channel = new BroadcastChannel(CHANNEL_NAME)
     channelRef.current = channel
     channel.onmessage = (event: MessageEvent<SharedState>) => {
-      if (!event.data?.version) return
+      if (!event.data?.version || event.data.version <= sharedVersionRef.current) return
       skipBroadcast.current = true
       rawDispatch({
         type: 'HYDRATE',
@@ -166,6 +207,13 @@ export function ClinicProvider({ children }: { children: ReactNode }) {
         // ignore
       }
       return
+    }
+    if (action.type === 'RESET_DEMO') {
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+      } catch {
+        // ignore
+      }
     }
     rawDispatch(action)
   }, [])

@@ -3,7 +3,7 @@ import { planAiTick } from '../agents/aiManager'
 import type { ClinicAction, ClinicState } from '../state/types'
 
 const LEADER_KEY = 'clinic-ai-leader'
-const TICK_MS = 2500
+const TICK_MS = 1500
 const LEADER_TTL_MS = 4000
 
 function tabId(): string {
@@ -44,6 +44,7 @@ function heartbeat(id: string) {
 
 /**
  * Runs the mock AI Manager on a single leader tab so multi-window demos don't double-dispatch.
+ * Always stamps AGENT_TICK so the sim clock / feeds visibly advance.
  */
 export function useAiAgent(
   state: ClinicState,
@@ -58,12 +59,16 @@ export function useAiAgent(
     const timer = setInterval(() => {
       if (!tryBecomeLeader(id)) return
       heartbeat(id)
+      const at = new Date().toISOString()
       const planned = planAiTick(stateRef.current)
-      if (planned.length === 0) return
-      if (planned.length === 1) {
-        dispatch(planned[0]!)
+      const batch: ClinicAction[] = [
+        { type: 'AGENT_TICK', payload: { at } },
+        ...planned,
+      ]
+      if (batch.length === 1) {
+        dispatch(batch[0]!)
       } else {
-        dispatch({ type: 'AI_BATCH', payload: planned })
+        dispatch({ type: 'AI_BATCH', payload: batch })
       }
     }, TICK_MS)
     return () => clearInterval(timer)

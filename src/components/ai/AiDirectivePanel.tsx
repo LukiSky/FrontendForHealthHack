@@ -1,4 +1,5 @@
 import { AlertTriangle, Check, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useClinic } from '../../store/clinicStore'
 import type { AiDirective } from '../../state/types'
 
@@ -39,8 +40,18 @@ function DirectiveCard({
   canAct: boolean
 }) {
   const { state, dispatch } = useClinic()
+  const navigate = useNavigate()
   const room = state.rooms.find((r) => r.id === directive.roomId)
   const patient = state.patients.find((p) => p.id === directive.patientId)
+  const responder = state.staff.find((s) => s.id === directive.staffId)
+  const currentPatient = responder?.currentRoomId
+    ? state.patients.find(
+        (p) => p.roomId === responder.currentRoomId && !p.visitComplete,
+      )
+    : undefined
+  const mustFinishCurrentCare = Boolean(
+    currentPatient && responder?.currentRoomId !== directive.roomId,
+  )
 
   return (
     <section
@@ -77,16 +88,31 @@ function DirectiveCard({
         </div>
       </div>
 
-      {canAct ? (
+      {canAct && mustFinishCurrentCare ? (
+        <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Finish or skip care for <strong>{currentPatient?.name}</strong> before accepting this
+          must-move, so their visit is not abandoned.
+          <button
+            type="button"
+            onClick={() => navigate(`/room/${responder?.currentRoomId}/care`)}
+            className="ml-2 rounded-md bg-amber-800 px-2 py-1 text-xs font-medium text-white"
+          >
+            Update current care
+          </button>
+        </div>
+      ) : canAct ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
               dispatch({
                 type: 'ACCEPT_DIRECTIVE',
                 payload: { directiveId: directive.id },
               })
-            }
+              navigate(`/room/${directive.roomId}`, {
+                state: { arrivedFromMustMove: true },
+              })
+            }}
             className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700"
           >
             <Check className="h-4 w-4" />

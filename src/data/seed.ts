@@ -6,32 +6,74 @@ import type {
   Room,
   StaffMember,
 } from '../state/types'
+import { emptyPatientProfile, emptyVitals as blankVitals } from '../state/types'
 
-const emptyVitals = {
-  height: '',
-  weight: '',
-  bloodPressure: '',
-  heartRate: '',
-  temperature: '',
+const emptyVitals = blankVitals()
+
+const now = () => new Date().toISOString()
+
+function patient(
+  partial: Omit<Partial<Patient>, 'id' | 'name' | 'age' | 'reason'> &
+    Pick<Patient, 'id' | 'name' | 'age' | 'reason'>,
+): Patient {
+  const { vitals: vitalsPartial, ...rest } = partial
+  return {
+    ...emptyPatientProfile(),
+    roomId: null,
+    history: [],
+    notes: '',
+    visitComplete: false,
+    chartIncomplete: false,
+    admittedAt: now(),
+    carePhase: 'awaiting_vitals',
+    acuity: 'routine',
+    ...rest,
+    simulationStage:
+      rest.simulationStage ??
+      (rest.roomId
+        ? rest.carePhase === 'awaiting_vitals'
+          ? 'roomed'
+          : rest.carePhase === 'awaiting_exam'
+            ? 'awaiting_exam'
+            : 'ready_for_discharge'
+        : 'waiting'),
+    lifecycleUpdatedAt: rest.lifecycleUpdatedAt ?? now(),
+    lifecyclePaused: rest.lifecyclePaused ?? false,
+    vitals: { ...emptyVitals, ...vitalsPartial },
+  }
 }
 
-export const ROOMS: Room[] = [
-  // Wing A — corridor y=0
-  { id: 'room-1', name: 'Room 1', status: 'occupied', x: 0, y: 0 },
-  { id: 'room-2', name: 'Room 2', status: 'occupied', x: 12, y: 0 },
-  { id: 'room-3', name: 'Room 3', status: 'available', x: 24, y: 0 },
-  { id: 'room-4', name: 'Room 4', status: 'occupied', x: 36, y: 0 },
-  // Wing B — y=16
-  { id: 'room-5', name: 'Room 5', status: 'available', x: 0, y: 16 },
-  { id: 'room-6', name: 'Room 6', status: 'cleaning', x: 12, y: 16 },
-  { id: 'room-7', name: 'Room 7', status: 'available', x: 24, y: 16 },
-  { id: 'room-8', name: 'Room 8', status: 'occupied', x: 36, y: 16 },
-  // Wing C — y=32
-  { id: 'room-9', name: 'Room 9', status: 'available', x: 0, y: 32 },
-  { id: 'room-10', name: 'Room 10', status: 'available', x: 12, y: 32 },
-  { id: 'room-11', name: 'Exam A', status: 'available', x: 24, y: 32 },
-  { id: 'room-12', name: 'Exam B', status: 'available', x: 36, y: 32 },
-]
+export const ROOMS: Room[] = (() => {
+  const rooms: Room[] = []
+  const cols = 6
+  const rows = 5
+  const special: Record<number, string> = {
+    29: 'Trauma',
+    30: 'Exam A',
+  }
+  const occupied = new Set([1, 2, 4, 8])
+  const cleaning = new Set([6])
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const n = row * cols + col + 1
+      const id = `room-${n}`
+      const name = special[n] ?? `Room ${n}`
+      const status = cleaning.has(n)
+        ? ('cleaning' as const)
+        : occupied.has(n)
+          ? ('occupied' as const)
+          : ('available' as const)
+      rooms.push({
+        id,
+        name,
+        status,
+        x: col * 14,
+        y: row * 14,
+      })
+    }
+  }
+  return rooms
+})()
 
 function staff(
   partial: Omit<StaffMember, 'currentTaskId'> & { currentTaskId?: string | null },
@@ -59,7 +101,7 @@ export const STAFF: StaffMember[] = [
     role: 'doctor',
     specialty: 'Internal Medicine',
     contact: 'chen@clinic.demo',
-    currentRoomId: 'room-1',
+    currentRoomId: null,
     schedule: [
       { time: '09:00', label: 'Rounds — Wing A' },
       { time: '11:00', label: 'Consult Room 1' },
@@ -72,7 +114,7 @@ export const STAFF: StaffMember[] = [
     role: 'doctor',
     specialty: 'Cardiology',
     contact: 'patel@clinic.demo',
-    currentRoomId: 'room-2',
+    currentRoomId: null,
     schedule: [
       { time: '08:30', label: 'ECG clinic' },
       { time: '10:30', label: 'Room 2 consult' },
@@ -111,7 +153,7 @@ export const STAFF: StaffMember[] = [
     role: 'nurse',
     specialty: 'Triage',
     contact: 'adams@clinic.demo',
-    currentRoomId: 'room-1',
+    currentRoomId: null,
     schedule: [
       { time: '07:30', label: 'Vitals station' },
       { time: '10:00', label: 'Room 1 assist' },
@@ -124,7 +166,7 @@ export const STAFF: StaffMember[] = [
     role: 'nurse',
     specialty: 'Med-Surg',
     contact: 'brooks@clinic.demo',
-    currentRoomId: 'room-4',
+    currentRoomId: null,
     currentTaskId: null,
     schedule: [
       { time: '08:00', label: 'Floor rounds' },
@@ -138,7 +180,7 @@ export const STAFF: StaffMember[] = [
     role: 'nurse',
     specialty: 'ICU float',
     contact: 'diaz@clinic.demo',
-    currentRoomId: 'room-2',
+    currentRoomId: null,
     schedule: [
       { time: '07:00', label: 'Handoff' },
       { time: '12:00', label: 'Room 2' },
@@ -173,20 +215,38 @@ export const STAFF: StaffMember[] = [
   }),
 ]
 
-const now = () => new Date().toISOString()
-
 export const PATIENTS: Patient[] = [
-  {
+  patient({
     id: 'P-2001',
     name: 'Jordan Lee',
+    preferredName: 'Jordan',
     age: 42,
+    dateOfBirth: '1984-03-12',
+    sex: 'female',
+    phone: '555-0142',
+    email: 'jordan.lee@email.demo',
+    address: '14 Maple St',
+    emergencyName: 'Chris Lee',
+    emergencyPhone: '555-0143',
+    emergencyRelation: 'Spouse',
+    insuranceProvider: 'ClinicCare Mutual',
+    insuranceId: 'CCM-88421',
+    arrivalMode: 'walk-in',
     reason: 'Chest discomfort',
+    symptomOnset: 'This morning ~08:00',
+    symptomDuration: '6 hours',
+    painScore: '5',
+    allergies: 'Penicillin (rash)',
+    medications: 'None regular',
+    pastMedicalHistory: 'GERD; no prior cardiac disease',
     vitals: {
       height: '175 cm',
       weight: '82 kg',
       bloodPressure: '138/88',
       heartRate: '92',
       temperature: '37.1°C',
+      respiratoryRate: '18',
+      spo2: '97',
     },
     roomId: 'room-1',
     history: [
@@ -198,23 +258,41 @@ export const PATIENTS: Patient[] = [
         summary: 'Initial vitals recorded at intake.',
       },
     ],
-    notes: 'Patient reports intermittent pressure since morning.',
-    visitComplete: false,
-    admittedAt: now(),
+    notes: 'Patient reports intermittent pressure since morning. Denies radiation to arm.',
     carePhase: 'in_consult',
     acuity: 'urgent',
-  },
-  {
+  }),
+  patient({
     id: 'P-2002',
     name: 'Sam Rivera',
     age: 67,
+    dateOfBirth: '1959-11-02',
+    sex: 'male',
+    phone: '555-0201',
+    email: 'sam.rivera@email.demo',
+    address: '88 Oak Ave',
+    emergencyName: 'Maria Rivera',
+    emergencyPhone: '555-0202',
+    emergencyRelation: 'Daughter',
+    insuranceProvider: 'Medicare Demo',
+    insuranceId: 'MD-44102',
+    referringSource: 'Primary care — Dr. Walsh',
+    arrivalMode: 'scheduled',
     reason: 'Follow-up hypertension',
+    symptomOnset: 'Chronic',
+    symptomDuration: 'Ongoing',
+    painScore: '0',
+    allergies: 'NKDA',
+    medications: 'Amlodipine 5 mg daily',
+    pastMedicalHistory: 'Hypertension, hyperlipidemia',
     vitals: {
       height: '168 cm',
       weight: '74 kg',
       bloodPressure: '148/90',
       heartRate: '78',
       temperature: '36.6°C',
+      respiratoryRate: '16',
+      spo2: '98',
     },
     roomId: 'room-2',
     history: [
@@ -227,43 +305,65 @@ export const PATIENTS: Patient[] = [
       },
     ],
     notes: 'On amlodipine; reviewing adherence.',
-    visitComplete: false,
-    admittedAt: now(),
     carePhase: 'in_consult',
     acuity: 'routine',
-  },
-  {
+  }),
+  patient({
     id: 'P-2003',
     name: 'Avery Kim',
     age: 29,
+    dateOfBirth: '1997-06-18',
+    sex: 'female',
+    phone: '555-0330',
+    arrivalMode: 'walk-in',
     reason: 'Laceration recheck',
+    symptomOnset: '5 days ago',
+    symptomDuration: '5 days',
+    painScore: '2',
+    allergies: 'Latex (contact)',
+    medications: 'Ibuprofen PRN',
+    pastMedicalHistory: 'None significant',
     vitals: {
-      ...emptyVitals,
       height: '162 cm',
       weight: '61 kg',
       bloodPressure: '118/72',
       heartRate: '70',
       temperature: '36.8°C',
+      respiratoryRate: '14',
+      spo2: '99',
     },
     roomId: 'room-4',
-    history: [],
-    notes: 'Suture check day 5.',
-    visitComplete: false,
-    admittedAt: now(),
+    notes: 'Suture check day 5. Wound clean, no erythema.',
     carePhase: 'awaiting_vitals',
     acuity: 'routine',
-  },
-  {
+  }),
+  patient({
     id: 'P-2004',
     name: 'Casey Morgan',
     age: 55,
+    dateOfBirth: '1971-01-29',
+    sex: 'male',
+    phone: '555-0488',
+    emergencyName: 'Pat Morgan',
+    emergencyPhone: '555-0489',
+    emergencyRelation: 'Partner',
+    arrivalMode: 'ambulance',
+    referringSource: 'EMS',
     reason: 'Severe chest pain — unstable',
+    symptomOnset: '45 minutes ago',
+    symptomDuration: '45 min',
+    painScore: '9',
+    allergies: 'Aspirin (GI bleed history — verify)',
+    medications: 'Metformin, atorvastatin',
+    pastMedicalHistory: 'Type 2 DM, smoker',
     vitals: {
       height: '178 cm',
       weight: '90 kg',
       bloodPressure: '92/60',
       heartRate: '118',
       temperature: '36.9°C',
+      respiratoryRate: '24',
+      spo2: '91',
     },
     roomId: 'room-8',
     history: [
@@ -276,11 +376,88 @@ export const PATIENTS: Patient[] = [
       },
     ],
     notes: 'Hypotensive, tachycardic. May be wrong room for acuity.',
-    visitComplete: false,
-    admittedAt: now(),
     carePhase: 'awaiting_exam',
     acuity: 'critical',
-  },
+  }),
+  patient({
+    id: 'P-2005',
+    name: 'Riley Chen',
+    age: 41,
+    sex: 'female',
+    phone: '555-0511',
+    arrivalMode: 'walk-in',
+    reason: 'Abdominal pain — waiting for room',
+    symptomOnset: 'Yesterday evening',
+    symptomDuration: '~18 hours',
+    painScore: '7',
+    allergies: 'NKDA',
+    medications: 'Oral contraceptive',
+    pastMedicalHistory: 'Appendectomy 2012',
+    history: [
+      {
+        id: 'h5',
+        at: now(),
+        staffId: 'admin-1',
+        staffName: 'Clinic Admin',
+        summary: 'Added to waiting list.',
+      },
+    ],
+    acuity: 'urgent',
+  }),
+  patient({
+    id: 'P-2006',
+    name: 'Morgan Blake',
+    age: 33,
+    sex: 'male',
+    phone: '555-0612',
+    arrivalMode: 'walk-in',
+    reason: 'Fever and cough',
+    symptomOnset: '3 days ago',
+    symptomDuration: '3 days',
+    painScore: '1',
+    allergies: 'NKDA',
+    medications: 'None',
+    pastMedicalHistory: 'Seasonal asthma',
+    history: [
+      {
+        id: 'h6',
+        at: now(),
+        staffId: 'admin-1',
+        staffName: 'Clinic Admin',
+        summary: 'Added to waiting list.',
+      },
+    ],
+    acuity: 'routine',
+  }),
+  patient({
+    id: 'P-2007',
+    name: 'Alex Torres',
+    age: 62,
+    sex: 'male',
+    phone: '555-0710',
+    emergencyName: 'Elena Torres',
+    emergencyPhone: '555-0711',
+    emergencyRelation: 'Spouse',
+    arrivalMode: 'referral',
+    referringSource: 'Urgent care',
+    reason: 'Dizziness — triage pending',
+    symptomOnset: 'Today mid-morning',
+    symptomDuration: '4 hours',
+    painScore: '0',
+    allergies: 'Sulfa drugs',
+    medications: 'Lisinopril, HCTZ',
+    pastMedicalHistory: 'Hypertension; prior syncope workup negative',
+    history: [
+      {
+        id: 'h7',
+        at: now(),
+        staffId: 'admin-1',
+        staffName: 'Clinic Admin',
+        summary: 'Added to waiting list.',
+      },
+    ],
+    acuity: 'urgent',
+  }),
 ]
 
 const SEED_DIRECTIVES: AiDirective[] = []
@@ -289,7 +466,7 @@ const SEED_THOUGHTS: AiThought[] = [
   {
     id: 'thought-1',
     at: now(),
-    message: 'Demo Agent online — monitoring rooms. No auto-move for routine cases.',
+    message: 'Demo Agent online — assigning waiting patients to free rooms; observing in-room care.',
   },
   {
     id: 'thought-2',
@@ -301,7 +478,7 @@ const SEED_THOUGHTS: AiThought[] = [
     id: 'thought-3',
     at: now(),
     message:
-      'Doctor feedback sample: critical patients should not sit in low-acuity rooms — use Help the agent on Live Room View.',
+      'Waiting list: Riley Chen, Morgan Blake, Alex Torres — will assign rooms when free.',
   },
 ]
 
@@ -338,6 +515,11 @@ export function createSeedState(): ClinicState {
     ],
     directives: SEED_DIRECTIVES.map((d) => ({ ...d })),
     aiThoughts: SEED_THOUGHTS.map((t) => ({ ...t })),
+    agentAssignEnabled: true,
+    // Give reviewers time to see the initial waiting queue before the agent acts.
+    agentAssignmentNotBefore: Date.now() + 8_000,
+    lastAgentTickAt: now(),
+    nextSimulationAt: Date.now() + 5_000,
     version: 1,
   }
 }
