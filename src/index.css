@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@keyframes crash-flash {
+  0%, 100% { background-color: rgb(254 226 226); border-color: rgb(239 68 68); }
+  50% { background-color: rgb(248 113 113); border-color: rgb(185 28 28); }
+}
+
+.crash-flash {
+  animation: crash-flash 0.8s ease-in-out infinite;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
